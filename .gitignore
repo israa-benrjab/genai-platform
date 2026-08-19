@@ -1,0 +1,6 @@
+*.gguf
+qwen-env/
+antigravity-env/
+*.log
+__pycache__/
+node_modules/
