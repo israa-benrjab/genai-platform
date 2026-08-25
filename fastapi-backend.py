@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException, UploadFile, File, Depends
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from fastapi.middleware.cors import CORSMiddleware  # <-- ADDED THIS
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import httpx
 import uvicorn
@@ -39,13 +39,13 @@ from qdrant_client.models import PointStruct, VectorParams, Distance
 
 app = FastAPI(title="GenAI Platform API")
 
-# --- CORS Middleware (ALLOW ALL ORIGINS FOR DEVELOPMENT) ---
+# --- CORS Middleware ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],          # Allows all origins (change to specific URL in production)
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],          # Allows all HTTP methods (GET, POST, etc.)
-    allow_headers=["*"],          # Allows all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # --- Configuration ---
@@ -177,7 +177,7 @@ async def health():
 async def summarize(request: SummarizeRequest, current_user: dict = Depends(get_current_user)):
     prompt = f"Summarize concisely:\n\n{request.text}\n\nSummary:"
     payload = {
-        "model": "/home/genai-platform-control/models/qwen.gguf",
+        "model": "Qwen/Qwen2-0.5B-Instruct",   # <--- FIXED for vLLM
         "prompt": prompt,
         "max_tokens": request.max_tokens,
         "temperature": 0.3
@@ -251,7 +251,7 @@ Query: {request.query}
 
 Answer:"""
     payload = {
-        "model": "/home/genai-platform-control/models/qwen.gguf",
+        "model": "Qwen/Qwen2-0.5B-Instruct",   # <--- FIXED for vLLM
         "prompt": prompt,
         "max_tokens": request.max_tokens,
         "temperature": 0.2
