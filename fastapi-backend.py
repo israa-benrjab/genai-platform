@@ -50,7 +50,7 @@ QDRANT_URL = os.getenv("QDRANT_URL", "http://qdrant-service.data:6333")
 COLLECTION_NAME = "documents"
 EMBEDDING_MODEL_NAME = "BAAI/bge-small-en-v1.5"
 
-# --- Groq API key (UPDATED) ---
+# --- Groq API key (set via environment variable) ---
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "your-groq-key-here")
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 
@@ -194,7 +194,7 @@ async def call_llm(prompt: str, model: str, max_tokens: int = 200, temperature: 
                 response = await client.post(GROQ_URL, json=payload, headers=headers, timeout=60.0)
                 response.raise_for_status()
                 result = response.json()
-                # Debug: print Groq response
+                # Debug: print Groq response (visible in logs)
                 print(f"[DEBUG] Groq response: {result}")
                 # Extract content, fallback to reasoning if content empty
                 message = result["choices"][0]["message"]
@@ -343,20 +343,28 @@ async def translate(request: TranslateRequest, current_user: dict = Depends(get_
 @app.post("/classify")
 async def classify(request: ClassifyRequest, current_user: dict = Depends(get_current_user)):
     prompt = f"Classify the following text into a single category (e.g., Financial, Legal, Technical, Marketing, General):\n\n{request.text}\n\nCategory:"
-    result = await call_llm(prompt, request.model, max_tokens=100, temperature=0.1)  # increased to 100
+    result = await call_llm(prompt, request.model, max_tokens=100, temperature=0.1)
     return {"category": result.strip(), "confidence": 0.85}
 
 @app.post("/action-items")
 async def action_items(request: ActionItemsRequest, current_user: dict = Depends(get_current_user)):
-    prompt = f"Extract action items from the following text. List each action with an assignee and due date if mentioned:\n\n{request.text}\n\nAction Items:"
-    result = await call_llm(prompt, request.model, max_tokens=100, temperature=0.3)
+    prompt = f"""Extract action items from the following text. List each action with an assignee and a due date if mentioned. Use the format:
+- Action: <description> | Assignee: <name> | Due: <date>
+
+Text:
+{request.text}
+
+Action Items:"""
+    result = await call_llm(prompt, request.model, max_tokens=80, temperature=0.3)
     items = [{"task": result, "assignee": "Unknown", "due": "Not specified"}]
     return {"items": items}
 
 @app.post("/reports")
 async def reports(request: ReportsRequest, current_user: dict = Depends(get_current_user)):
-    prompt = f"Generate a {request.template} report based on the following document IDs: {', '.join(request.doc_ids)}. Synthesize key insights:\n\nReport:"
-    result = await call_llm(prompt, request.model, max_tokens=200, temperature=0.3)
+    prompt = f"""Generate a {request.template} report based on the following document IDs: {', '.join(request.doc_ids)}. Provide a concise summary with key insights in bullet points if possible.
+
+Report:"""
+    result = await call_llm(prompt, request.model, max_tokens=150, temperature=0.3)
     return {"report": result}
 
 @app.post("/prompts/validate")
