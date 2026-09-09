@@ -27,11 +27,13 @@ spec:
     spec:
       containers:
         - name: fastapi
-          image: genaiplatform2026.azurecr.io/fastapi-backend:latest
+          image: genaiplatform2026.azurecr.io/genai-backend:v38
           imagePullPolicy: Always
           ports:
             - containerPort: 8001
           env:
+            - name: SECRET_KEY
+              value: "your-secret-key-change-in-production"
             - name: VLLM_URL
               value: "http://vllm-service.ai:8000"
             - name: QDRANT_URL

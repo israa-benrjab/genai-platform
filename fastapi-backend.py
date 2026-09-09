@@ -50,9 +50,8 @@ QDRANT_URL = os.getenv("QDRANT_URL", "http://qdrant-service.data:6333")
 COLLECTION_NAME = "documents"
 EMBEDDING_MODEL_NAME = "BAAI/bge-small-en-v1.5"
 
-# --- Groq API key (set via environment variable) ---
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "your-groq-key-here")
-GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
+# Groq API key (set via environment variable)
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "REDACTED")
 
 # --- JWT ---
 SECRET_KEY = "your-secret-key-change-in-production"

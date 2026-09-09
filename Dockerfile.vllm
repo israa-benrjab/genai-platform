@@ -1,0 +1,26 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y \
+    gcc g++ cmake build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip install torch --index-url https://download.pytorch.org/whl/cpu --no-cache-dir
+
+RUN pip install vllm==0.6.3.post1 --no-cache-dir \
+    && pip install --no-cache-dir transformers==4.45.2 tokenizers==0.20.3
+
+ENV VLLM_TARGET_DEVICE=cpu
+ENV VLLM_CPU_KVCACHE_SPACE=2
+
+EXPOSE 8000
+
+CMD ["python3", "-m", "vllm.entrypoints.openai.api_server", \
+     "--model", "Qwen/Qwen2-0.5B-Instruct", \
+     "--device", "cpu", \
+     "--dtype", "float32", \
+     "--max-num-seqs", "1", \
+     "--max-model-len", "512", \
+     "--swap-space", "2", \
+     "--enforce-eager"]
