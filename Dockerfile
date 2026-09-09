@@ -18,8 +18,10 @@ RUN pip install --no-cache-dir \
     qdrant-client \
     langgraph langchain langchain-community \
     tiktoken \
-    python-jose[cryptography]
+    python-jose[cryptography] \
+    prometheus-fastapi-instrumentator
 
+# Copy your FastAPI code
 COPY fastapi-backend.py /app/main.py
 
 EXPOSE 8001
