@@ -38,7 +38,7 @@ from sentence_transformers import SentenceTransformer
 from qdrant_client import QdrantClient
 from qdrant_client.models import PointStruct, VectorParams, Distance
 
-# Azure Blob Storage
+# Optional Azure Blob Storage
 try:
     from azure.storage.blob import BlobServiceClient
 except ImportError:
@@ -55,7 +55,6 @@ Instrumentator().instrument(app).expose(app)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -367,7 +366,7 @@ async def upload_document(
     text = extract_text_from_file(contents, file.filename)
     if not text or text.startswith("Error"):
         raise HTTPException(status_code=400, detail="Could not extract text.")
-    
+
     if AZURE_STORAGE_CONNECTION_STRING and BlobServiceClient:
         try:
             upload_to_azure_blob(contents, file.filename)
@@ -377,7 +376,7 @@ async def upload_document(
     pii_results = scan_for_pii(text)
     if pii_results:
         print(f"[SECURITY] PII detected in {file.filename}: {pii_results}")
-    
+
     chunks = chunk_text(text)
     embeddings = embedding_model.encode(chunks)
     points = []
@@ -418,7 +417,7 @@ async def list_documents(current_user: dict = Depends(require_role(["admin", "an
             owner = point.payload.get("owner")
             if current_user["role"] == "admin" or owner == current_user["username"]:
                 filtered_points.append(point)
-        
+
         doc_map = {}
         for point in filtered_points:
             payload = point.payload
@@ -461,7 +460,7 @@ async def summarize(
         "comprehensive": "Provide a detailed, comprehensive summary covering all key aspects."
     }
     length_instruction = length_map.get(request.summary_length, "Provide a concise summary with 3–5 main points.")
-    
+
     if request.output_format == "bullets":
         format_instruction = "Use bullet points."
     else:
@@ -538,13 +537,13 @@ async def chat(
     current_user: dict = Depends(require_role(["admin", "analyst", "user"]))
 ):
     query_emb = embedding_model.encode([request.query])[0]
-    
+
     filter_condition = None
     if request.doc_ids:
         filter_condition = {
             "must": [{"key": "doc_id", "match": {"any": request.doc_ids}}]
         }
-    
+
     async with httpx.AsyncClient() as client:
         search_payload = {
             "vector": query_emb.tolist(),
@@ -566,7 +565,7 @@ async def chat(
             search_results = result.get("result", [])
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Qdrant search failed: {str(e)}")
-    
+
     context = ""
     sources = []
     for i, res in enumerate(search_results):
@@ -575,7 +574,7 @@ async def chat(
         filename = payload.get("filename", "unknown")
         context += f"Source {i+1} ({filename}): {chunk_text}\n"
         sources.append({"filename": filename, "score": res.get("score", 0)})
-    
+
     prompt = f"""You are a helpful assistant. Use the provided context to answer the user's question. If the context does not contain the answer, say "I don't have enough information." Always cite sources as [Source X].
 
 Context:
@@ -584,10 +583,10 @@ Context:
 Question: {request.query}
 
 Answer:"""
-    
+
     if len(prompt) > 3000:
         prompt = prompt[:3000] + "... (truncated)"
-    
+
     result = await call_llm(prompt, request.model, max_tokens=request.max_tokens, temperature=0.2)
     log_action(current_user["username"], "chat", {"query": request.query, "sources": sources})
     return {"answer": result, "sources": sources, "tokens_used": len(result.split())}
@@ -617,9 +616,9 @@ async def reports(
                 sources.append(filename)
         if not context:
             raise HTTPException(status_code=404, detail="No content found for the given document IDs.")
-        
+
         context = context[:2000]
-        
+
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to retrieve documents: {str(e)}")
@@ -664,10 +663,10 @@ async def process_file(
     text = extract_text_from_file(contents, file.filename)
     if not text or text.startswith("Error"):
         raise HTTPException(status_code=400, detail="Could not extract text from file.")
-    
+
     if len(text) > 1000:
         text = text[:1000] + "... (truncated)"
-    
+
     file_id = str(uuid.uuid4())
     original_filename = file.filename
     ext = original_filename.split('.')[-1] if '.' in original_filename else ''
@@ -675,7 +674,7 @@ async def process_file(
     file_path = UPLOAD_DIR / safe_name
     with open(file_path, "wb") as f:
         f.write(contents)
-    
+
     uploaded_files_metadata[file_id] = {
         "original_filename": original_filename,
         "uploaded_at": datetime.utcnow().isoformat(),
@@ -793,7 +792,7 @@ async def compare_documents(
             raise HTTPException(status_code=404, detail="One or both documents not found.")
         doc1_text = " ".join([t["text"] for t in texts if t["doc_id"] == doc_id_1])[:3000]
         doc2_text = " ".join([t["text"] for t in texts if t["doc_id"] == doc_id_2])[:3000]
-        
+
         prompt = f"""You are an expert analyst. Compare the following two documents.
 List:
 - Key similarities
