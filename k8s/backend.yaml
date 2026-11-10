@@ -33,7 +33,7 @@ spec:
         runAsGroup: 1000
       containers:
         - name: fastapi
-          image: genaiplatform2026.azurecr.io/genai-backend:sha-dcc20a6
+          image: genaiplatform2026.azurecr.io/genai-backend:sha-5718ed2
           imagePullPolicy: Always
           ports:
             - containerPort: 8001
