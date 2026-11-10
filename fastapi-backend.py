@@ -38,7 +38,6 @@ from sentence_transformers import SentenceTransformer
 from qdrant_client import QdrantClient
 from qdrant_client.models import PointStruct, VectorParams, Distance
 
-# Optional Azure Blob Storage
 try:
     from azure.storage.blob import BlobServiceClient
 except ImportError:
@@ -48,7 +47,6 @@ app = FastAPI(title="GenAI Platform API")
 
 from prometheus_fastapi_instrumentator import Instrumentator
 
-# Instrument the app and expose /metrics endpoint
 Instrumentator().instrument(app).expose(app)
 
 # --- CORS ---
@@ -76,11 +74,9 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
 
-# Azure Blob Storage (optional)
 AZURE_STORAGE_CONNECTION_STRING = os.getenv("AZURE_STORAGE_CONNECTION_STRING", "")
 AZURE_CONTAINER_NAME = os.getenv("AZURE_CONTAINER_NAME", "uploaded-docs")
 
-# --- Fake users with roles ---
 fake_users_db = {
     "admin": {"username": "admin", "password": "admin123", "role": "admin"},
     "analyst": {"username": "analyst", "password": "analyst123", "role": "analyst"},
@@ -112,7 +108,6 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
         raise credentials_exception
     return user
 
-# --- Role-based access helper ---
 def require_role(required_roles: List[str]):
     def role_checker(current_user: dict = Depends(get_current_user)):
         if current_user["role"] not in required_roles:
@@ -120,7 +115,6 @@ def require_role(required_roles: List[str]):
         return current_user
     return role_checker
 
-# --- File Storage Setup (for processed files) ---
 UPLOAD_DIR = Path("/app/uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
 METADATA_FILE = UPLOAD_DIR / "metadata.json"
@@ -137,7 +131,6 @@ def save_metadata(data):
 
 uploaded_files_metadata = load_metadata()
 
-# --- History Storage Setup (per user) ---
 HISTORY_DIR = Path("/app/history")
 HISTORY_DIR.mkdir(exist_ok=True)
 
@@ -163,7 +156,6 @@ def log_action(username: str, action: str, details: dict):
     })
     save_user_history(username, history)
 
-# --- Load embedding model and connect to Qdrant ---
 print("Loading Embedding Model...")
 embedding_model = SentenceTransformer(EMBEDDING_MODEL_NAME)
 print("Embedding Model loaded.")
@@ -179,7 +171,6 @@ except:
     )
 print("Qdrant ready.")
 
-# --- Azure Blob Storage helper ---
 def upload_to_azure_blob(file_bytes: bytes, filename: str) -> bool:
     if not AZURE_STORAGE_CONNECTION_STRING or not BlobServiceClient:
         return False
@@ -193,7 +184,6 @@ def upload_to_azure_blob(file_bytes: bytes, filename: str) -> bool:
         print(f"[ERROR] Azure Blob upload failed: {e}")
         return False
 
-# --- Request Models ---
 class SummarizeRequest(BaseModel):
     text: str
     max_tokens: Optional[int] = 300
@@ -232,7 +222,6 @@ class ReportsRequest(BaseModel):
 class ValidatePromptRequest(BaseModel):
     prompt: str
 
-# --- Helper functions ---
 def extract_text_from_file(file_bytes: bytes, filename: str) -> str:
     ext = filename.split('.')[-1].lower()
     text = ""
@@ -299,8 +288,6 @@ async def call_llm(prompt: str, model: str, max_tokens: int = 200, temperature: 
             except Exception as e:
                 raise HTTPException(status_code=500, detail=f"Groq error: {str(e)}")
     else:
-        # Local Llama 3.2 1B (served by llama-cpp-python)
-        # NOTE: No 'model' field is sent because llama-cpp-python rejects it.
         payload = {
             "prompt": prompt,
             "max_tokens": max_tokens,
@@ -319,8 +306,6 @@ async def call_llm(prompt: str, model: str, max_tokens: int = 200, temperature: 
             except Exception as e:
                 traceback.print_exc()
                 raise HTTPException(status_code=500, detail=f"Local LLM error: {str(e)}")
-
-# --- ENDPOINTS ---
 
 @app.post("/auth/login")
 async def login(form_data: OAuth2PasswordRequestForm = Depends()):
@@ -356,7 +341,6 @@ async def list_tasks(current_user: dict = Depends(get_current_user)):
         "upload": {"name": "Upload Documents", "allowed": True}
     }
 
-# --- Document Upload for RAG (with owner) ---
 @app.post("/documents/upload")
 async def upload_document(
     file: UploadFile = File(...),
@@ -447,8 +431,6 @@ async def delete_document(doc_id: str, current_user: dict = Depends(require_role
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# --- TYPED TEXT ENDPOINTS ---
-
 @app.post("/summarize")
 async def summarize(
     request: SummarizeRequest,
@@ -538,11 +520,21 @@ async def chat(
 ):
     query_emb = embedding_model.encode([request.query])[0]
 
-    filter_condition = None
+    # --- SECURITY FIX: Enforce per-user isolation ---
+    must_clauses = []
+    
+    # If the user is NOT an admin, they can ONLY search their own documents
+    if current_user["role"] != "admin":
+        must_clauses.append({"key": "owner", "match": {"value": current_user["username"]}})
+        
+    # If specific doc_ids are requested, add that to the filter
     if request.doc_ids:
-        filter_condition = {
-            "must": [{"key": "doc_id", "match": {"any": request.doc_ids}}]
-        }
+        must_clauses.append({"key": "doc_id", "match": {"any": request.doc_ids}})
+
+    filter_condition = None
+    if must_clauses:
+        filter_condition = {"must": must_clauses}
+    # ------------------------------------------------
 
     async with httpx.AsyncClient() as client:
         search_payload = {
@@ -647,8 +639,6 @@ Report:"""
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Report generation failed: {str(e)}")
 
-# --- FILE PROCESSING (Upload & Save) ---
-
 @app.post("/process-file")
 async def process_file(
     file: UploadFile = File(...),
@@ -729,8 +719,6 @@ Action Items:"""
         "file_id": file_id
     }
 
-# --- FILE MANAGEMENT ---
-
 @app.get("/files")
 async def list_uploaded_files(current_user: dict = Depends(require_role(["admin", "analyst", "user"]))):
     return {"files": uploaded_files_metadata}
@@ -761,8 +749,6 @@ async def delete_file(file_id: str, current_user: dict = Depends(require_role(["
     save_metadata(uploaded_files_metadata)
     log_action(current_user["username"], "delete_file", {"file_id": file_id})
     return {"message": f"File {file_id} deleted"}
-
-# --- COMPARE DOCUMENTS ---
 
 @app.post("/compare")
 async def compare_documents(
@@ -817,8 +803,6 @@ Comparison:"""
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
-# --- COMPARE MODELS (with truncation) ---
-
 @app.post("/compare-models")
 async def compare_models(
     prompt: str,
@@ -827,12 +811,9 @@ async def compare_models(
     max_tokens: Optional[int] = 200,
     current_user: dict = Depends(require_role(["admin", "analyst", "user"]))
 ):
-    # --- TRUNCATE PROMPT TO SAFE LENGTH ---
     if len(prompt) > 2000:
         prompt = prompt[:2000] + "... (truncated)"
-    # ------------------------------------
 
-    # Detect code/prompt type and add system instruction
     if "code" in prompt.lower() or "python" in prompt.lower():
         system = "You are a code generator. Output only Python code, no explanations, no markdown."
         prompt = f"{system}\n\n{prompt}"
@@ -857,8 +838,6 @@ async def compare_models(
         "response2": results[1],
         "tokens_used": len(results[0].split()) + len(results[1].split())
     }
-
-# --- ROLE-BASED STATS ENDPOINT ---
 
 @app.get("/stats")
 async def get_stats(current_user: dict = Depends(get_current_user)):
@@ -911,14 +890,10 @@ async def get_stats(current_user: dict = Depends(get_current_user)):
             "message": "Welcome, User. You have basic summarization and chat access."
         }
 
-# --- HISTORY ENDPOINT (with logging) ---
-
 @app.get("/history")
 async def get_history(current_user: dict = Depends(require_role(["admin", "analyst", "user"]))):
     history = load_user_history(current_user["username"])
     return {"history": history}
-
-# --- ADMIN ENDPOINTS ---
 
 @app.get("/admin/users")
 async def admin_users(current_user: dict = Depends(require_role(["admin"]))):
